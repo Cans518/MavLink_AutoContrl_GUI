@@ -1,0 +1,9 @@
+{
+    "files.associations": {
+        "inet.h": "c",
+        "stdlib.h": "c",
+        "string.h": "c",
+        "mavlink.h": "c",
+        "sstream": "c"
+    }
+}
