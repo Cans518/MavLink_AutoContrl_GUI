@@ -13,7 +13,7 @@
 # 项目构建
  1. 安装`gtk+-3.0`库：
     ```shell
-    sudo apt-get install -y libgtk-3-dev devhelp
+    sudo envirment_install.sh
     ```
  2. 安装`MavLink`库：
    在仓库`Lib`目录下已经提供 `MavLink-v2.0`的c语言构建本地库，可以直接使用。

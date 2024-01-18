@@ -18,9 +18,9 @@ PURPLE := \033[0;35m
 BUIL := \033[0;36m
 NC := \033[0m
 
-.PHONY: all preinstall clean copybuild
+.PHONY: all clean copybuild
 
-all: preinstall $(TARGET) copybuild
+all: $(TARGET) copybuild
 
 $(TARGET): $(OBJ)
 	@echo "$(YELLOW)Compiling $@$(NC)"
@@ -32,13 +32,6 @@ $(CACHE)/AutoLand.o: $(SRC)
 	@echo "$(YELLOW)Compiling $@$(NC)"
 	@$(CC) $(CFLAGS) -c $< -o $@ $(LIBS)
 	@echo "$(GREEN)Compiled $@$(NC)"
-
-
-preinstall: 
-	@echo "$(YELLOW)Installing the Libs .....$(NC)";
-	@sudo apt-get update && upgrade
-	@sudo apt-get install -y libgtk-3-dev devhelp
-	@echo "$(GREEN)Installed!$(NC)"
 
 
 copybuild: $(TARGET)
