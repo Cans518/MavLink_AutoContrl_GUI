@@ -20,6 +20,6 @@
 
  3. 编译源码：
    本项目已经提供`Makefile`，直接在项目根目录下执行`make`即可。
-   ```shell
-   make
-   ```
+    ```shell
+    make
+    ```
