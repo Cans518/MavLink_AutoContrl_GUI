@@ -1,11 +1,20 @@
 // 图形化头文件引入，GTK+-3.0
 #include <gtk/gtk.h>
 
+
 // 基本库，输入输出库引入
+#include <err.h>
+#include <errno.h>
 #include <stdio.h>
+#include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <unistd.h>
+#include <termios.h>
 #include <stdbool.h>
+#include <sys/ioctl.h>
+
 
 // 网络通信库引入
 #include <unistd.h>
@@ -32,7 +41,10 @@ const char* flightModeStrings[] = {
     "AUTO",
     "GUIDED",
     "NONE",
-    "RTL"
+    "RTL",
+    "",
+    "",
+    "LAND"
     // 添加其他模式
 };
 
@@ -45,6 +57,7 @@ typedef struct{
     int modes;
 }Update_date;
 
+Update_date Info;
 
 /*
 * @brief 发送命令
@@ -210,7 +223,13 @@ gboolean updateAltitude(gpointer data)
 */
 void onButtonClicked(GtkWidget *widget, gpointer data)
 {
-    mav_Send();
+    //mav_Send();
+    system("./Script/b \"mode land\"");
+}
+
+void onButtonClicked2(GtkWidget *widget, gpointer data)
+{
+    system("./Script/a");
 }
 
 int main(int argc, char *argv[])
@@ -220,8 +239,8 @@ int main(int argc, char *argv[])
 
     // 创建窗口
     GtkWidget *window = gtk_window_new(GTK_WINDOW_TOPLEVEL); // 顶层窗口
-    gtk_window_set_title(GTK_WINDOW(window), "AutoLand APP"); // 设置窗口标题
-    gtk_container_set_border_width(GTK_CONTAINER(window), 10); // 设置窗口边框
+    gtk_window_set_title(GTK_WINDOW(window), "AutoControl APP"); // 设置窗口标题
+    gtk_container_set_border_width(GTK_CONTAINER(window), 10); 
 
     // 创建一个垂直布局
     GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5); // 垂直布局
@@ -231,14 +250,24 @@ int main(int argc, char *argv[])
     char buffer[50];
     sprintf(buffer, "当前高度: %.2fm", currentAltitude);
     GtkWidget *altitudeLabel = gtk_label_new(buffer); // 标签
+    gtk_widget_set_size_request(altitudeLabel,280,10);
     gtk_box_pack_start(GTK_BOX(vbox), altitudeLabel, TRUE, TRUE, 0); // 将标签添加到布局
 
     // 创建一个按键
     GtkWidget *button = gtk_button_new_with_label("Auto Land"); // 按键
-    gtk_box_pack_start(GTK_BOX(vbox), button, TRUE, TRUE, 0); // 将按键添加到布局
+    gtk_widget_set_size_request(button, 50, 10);
+    gtk_box_pack_start(GTK_BOX(vbox), button, false, false, 0); // 将按键添加到布局
 
     // 链接点击事件与回调函数
     g_signal_connect(button, "clicked", G_CALLBACK(onButtonClicked), NULL); // 链接点击事件
+
+    // 创建一个按键
+    GtkWidget *button2 = gtk_button_new_with_label("Auto Fly"); // 按键
+    gtk_widget_set_size_request(button2,10,10);
+    gtk_box_pack_start(GTK_BOX(vbox), button2, false, false, 0); // 将按键添加到布局
+
+    // 链接点击事件与回调函数
+    g_signal_connect(button2, "clicked", G_CALLBACK(onButtonClicked2), NULL); // 链接点击事件
 
     // 设置更新高度的定时器
     g_timeout_add_seconds(1, updateAltitude, altitudeLabel); // 每隔1秒更新一次高度

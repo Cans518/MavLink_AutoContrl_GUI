@@ -7,6 +7,7 @@ TARGET :=  build/AutoLand
 OUT := AutoLand
 BUILDDIR := build
 CACHE := $(BUILDDIR)/cache
+SCRIPT := Script
 
 OBJ := $(CACHE)/AutoLand.o
 
@@ -18,7 +19,7 @@ PURPLE := \033[0;35m
 BUIL := \033[0;36m
 NC := \033[0m
 
-.PHONY: all clean copybuild
+.PHONY: all preinstall clean copybuild clean_all
 
 all: $(TARGET) copybuild
 
@@ -32,6 +33,13 @@ $(CACHE)/AutoLand.o: $(SRC)
 	@echo "$(YELLOW)Compiling $@$(NC)"
 	@$(CC) $(CFLAGS) -c $< -o $@ $(LIBS)
 	@echo "$(GREEN)Compiled $@$(NC)"
+
+
+preinstall:
+	@$(CC) -o $(SCRIPT)/b Lib/Sendcmd/b.c
+	@$(CC) Lib/Sendcmd/AutoFly.c -o $(SCRIPT)/a 
+	@sudo chown root:root $(SCRIPT)/b
+	@sudo chmod +s $(SCRIPT)/b   
 
 
 copybuild: $(TARGET)
@@ -48,8 +56,16 @@ clean:
 	@rm -rf $(BUILDDIR) AutoLand
 	@echo "$(GREEN)Cleaning done$(NC)";
 
+clean_all:
+	@echo "$(YELLOW)Cleaning...$(NC)"
+	@rm -rf $(BUILDDIR) AutoLand  $(SCRIPT)
+	@echo "$(GREEN)Cleaning done$(NC)";
+
 # Ensure cache directory exists
 $(shell mkdir -p $(CACHE))
 
 # Ensure build directory exists
 $(shell mkdir -p $(BUILDDIR))
+
+# Ensure build directory exists
+$(shell mkdir -p $(SCRIPT))
