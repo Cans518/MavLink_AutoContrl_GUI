@@ -25,55 +25,90 @@
 // 通信协议mavlink引入
 #include <common/mavlink.h>
 
+// 结构体定义
+typedef struct {
+    GtkWidget *window1;
+    GtkWidget *window2;
+} S_Windows;
+
+typedef struct
+{
+    char * ip;
+    char * port;
+}Ip_Info;
+
+Ip_Info ipinfo;
+
+
+S_Windows windows_s;
+
+
 // 定义常量
-#define MAVLINK_SYSTEM_ID 1
-#define MAVLINK_COMPONENT_ID 1
-#define MAVLINK_UDP_PORT 5501   // 发送Mavlink消息端口
+#define MAVLINK_SYSTEM_ID_SELF 1
+#define MAVLINK_COMPONENT_ID_SELF 0
 #define TARGET_IP "127.0.0.1"   // 本地ip
 #define UDP_PORT 14550          // 本地UDP端口（接收）
 #define ARDUPILOT_IP TARGET_IP  // Ardupilot的IP地址
 #define ARDUPILOT_PORT UDP_PORT // 默认的MAVLink端口
 
-const char* flightModeStrings[] = {
-    "STABILIZE",
-    "ACRO",
-    "ALT_HOLD",
-    "AUTO",
-    "GUIDED",
-    "NONE",
-    "RTL",
-    "",
-    "",
-    "LAND"
-    // 添加其他模式
-};
+int tx_port = -1;
 
-// 初始化高度
-float currentAltitude = 0.0;
-int mode = 0;
+const char* flightModeStrings[] = {
+    "STABILIZE", // 0 稳定模式
+    "ACRO", // 1 俯仰
+    "ALT_HOLD", // 2 定高模式
+    "AUTO", // 3 自动模式
+    "GUIDED", // 4 导航模式
+    "LOITER", // 5 悬停模式 
+    "RTL", // 6 返航模式
+    "CIRCLE", // 7 环绕模式
+    "POSITION", // 8 定点模式
+    "LAND", // 9 降落模式
+    "OF_LOITER", // 10 光流悬停模式
+    "DRIFT", // 11 机漂移模式
+    "SPORT", // 12 速度模式
+    "FLIP", // 13 翻滚模式
+    "AUTOTUNE", // 14 自动调整模式
+    "POSHOLD", // 15 位置保持模式
+    "BRAKE", // 16 刹车模式
+    "ALT_FLIP", // 17 高度翻滚模式
+};
 
 typedef struct{
     float altitude;
     int modes;
+    int sysid;
+    int compid;
 }Update_date;
 
 Update_date Info;
 
-/*
-* @brief 发送命令
-* @param MAV_CMD_NAV_LAND
-* @param 1
-* @param 1
-* @param 1
-* @param 0 0 0 0 0 0 0
-*/
 void mav_Send()
 {
+    // 切换到Land模式的Mavlink命令
+    mavlink_command_long_t cmd = {0};
+    cmd.target_system = 1;  // 目标系统ID
+    cmd.target_component = Info.compid;
+    cmd.command = MAV_CMD_NAV_LAND;
+    cmd.param1 = 0;
+
+	// Encode
+	mavlink_message_t message;
+	mavlink_msg_command_long_encode(1, 0, &message, &cmd);
+    printf("%d %d",Info.sysid,Info.compid);
+    
+    // 将消息序列化为字节数组
+    uint8_t buf[MAVLINK_MAX_PACKET_LEN];
+    uint16_t len = mavlink_msg_to_send_buffer(buf, &message);
+
+    // 设置ArduPilot SITL的IP地址和端口
+    const char* target_ip = "127.0.0.1"; // ArduPilot SITL的IP地址
+    const int target_port = tx_port;       // ArduPilot SITL监听的端口
+
     // 创建UDP套接字
-    int udp_socket = socket(AF_INET, SOCK_DGRAM, 0);
-    if (udp_socket == -1)
-    {
-        perror("Error creating socket");
+    int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sockfd < 0) {
+        perror("socket creation failed");
         exit(EXIT_FAILURE);
     }
 
@@ -81,35 +116,14 @@ void mav_Send()
     struct sockaddr_in target_addr;
     memset(&target_addr, 0, sizeof(target_addr));
     target_addr.sin_family = AF_INET;
-    target_addr.sin_port = htons(MAVLINK_UDP_PORT);
-    if (inet_pton(AF_INET, TARGET_IP, &target_addr.sin_addr) <= 0)
-    {
-        perror("Error setting up target address");
-        close(udp_socket);
-        exit(EXIT_FAILURE);
-    }
+    target_addr.sin_port = htons(target_port);
+    inet_pton(AF_INET, target_ip, &target_addr.sin_addr);
 
-    // 创建MAVLink消息
-    mavlink_message_t msg; // 消息结构体
-    mavlink_msg_command_long_pack(
-        MAVLINK_SYSTEM_ID, MAVLINK_COMPONENT_ID, &msg,
-        MAV_CMD_NAV_LAND,   // Land命令
-        1,                  // 确认
-        1,                  // 目标系统
-        1,                  // 目标组件
-        0, 0, 0, 0, 0, 0, 0 // 参数（在Land模式中未使用）
-    );
+    // 发送数据
+    sendto(sockfd, buf, len, 0, (const struct sockaddr*)&target_addr, sizeof(target_addr));
 
-    // 序列化MAVLink消息
-    uint8_t buf[MAVLINK_MAX_PACKET_LEN];
-    uint16_t len = mavlink_msg_to_send_buffer(buf, &msg);
-
-    // 通过UDP发送序列化的消息
-    if (sendto(udp_socket, buf, len, 0, (struct sockaddr *)&target_addr, sizeof(target_addr)) == -1)
-        perror("Error sending MAVLink message");
-
-    // 关闭UDP
-    close(udp_socket);
+    // 关闭套接字
+    close(sockfd);
 }
 
 /*
@@ -144,19 +158,6 @@ Update_date get_high()
         perror("Error binding UDP socket");
         close(udpSocket);
     }
-
-    // 设置Ardupilot地址
-    struct sockaddr_in ardupilotAddr;
-    memset(&ardupilotAddr, 0, sizeof(ardupilotAddr));
-    ardupilotAddr.sin_family = AF_INET;
-    ardupilotAddr.sin_addr.s_addr = inet_addr(ARDUPILOT_IP);
-    ardupilotAddr.sin_port = htons(ARDUPILOT_PORT);
-
-    // Mavlink变量
-    mavlink_message_t msg;
-    uint8_t buf[MAVLINK_MAX_PACKET_LEN];
-
-
 
     while (get_h || get_m)
     {
@@ -204,15 +205,24 @@ Update_date get_high()
 */
 gboolean updateAltitude(gpointer data)
 {
-    Update_date info;
-    info = get_high();
-    currentAltitude = info.altitude;
-    if (currentAltitude <= 0.1)
-        currentAltitude = 0;
+    Info = get_high();
+    if (Info.altitude <= 0.1)
+        Info.altitude = 0;
     // 更新高度标签中的值
     GtkWidget *label = GTK_WIDGET(data);
-    char buff[100];
-    sprintf(buff, "The mode : %s \n 当前高度: %.2fm", flightModeStrings[info.modes], currentAltitude);
+    char buff[50];
+    sprintf(buff, "The mode : %s \n 当前高度: %.2fm", flightModeStrings[Info.modes], Info.altitude);
+    gtk_label_set_text(GTK_LABEL(label), buff);
+
+    return G_SOURCE_CONTINUE;
+}
+
+gboolean updateipinfo(gpointer data)
+{
+    // 更新高度标签中的值
+    GtkWidget *label = GTK_WIDGET(data);
+    char buff[50];
+    sprintf(buff, "Listening to %s:%s", ipinfo.ip,ipinfo.port);
     gtk_label_set_text(GTK_LABEL(label), buff);
 
     return G_SOURCE_CONTINUE;
@@ -221,59 +231,393 @@ gboolean updateAltitude(gpointer data)
 /*
 * @brief 按钮点击事件响应
 */
-void onButtonClicked(GtkWidget *widget, gpointer data)
+void Auto_Land(GtkWidget *widget, gpointer data)
 {
-    //mav_Send();
-    system("./Script/b \"mode land\"");
+    mav_Send();
+    // system("./Script/b \"mode land\"");
 }
 
-void onButtonClicked2(GtkWidget *widget, gpointer data)
+void Mode_Guided(){
+    // 切换到Guided模式的Mavlink命令
+    mavlink_command_long_t cmd = {0};
+    cmd.target_system = 1;  // 目标系统ID（根据实际情况修改）
+    cmd.target_component = Info.compid;
+    cmd.command = MAV_CMD_DO_SET_MODE;
+    cmd.confirmation = true;
+    cmd.param1 = 81;
+    cmd.param2 = 4;
+
+	// Encode
+	mavlink_message_t message;
+	mavlink_msg_command_long_encode(MAVLINK_SYSTEM_ID_SELF, MAVLINK_COMPONENT_ID_SELF, &message, &cmd);
+    
+    // 将消息序列化为字节数组
+    uint8_t buf[MAVLINK_MAX_PACKET_LEN];
+    uint16_t len = mavlink_msg_to_send_buffer(buf, &message);
+
+    // 设置ArduPilot SITL的IP地址和端口
+    const char* target_ip = "127.0.0.1"; // ArduPilot SITL的IP地址
+    const int target_port = tx_port;       // ArduPilot SITL监听的端口
+
+    // 创建UDP套接字
+    int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sockfd < 0) {
+        perror("socket creation failed");
+        exit(EXIT_FAILURE);
+    }
+
+    // 设置目标地址
+    struct sockaddr_in target_addr;
+    memset(&target_addr, 0, sizeof(target_addr));
+    target_addr.sin_family = AF_INET;
+    target_addr.sin_port = htons(target_port);
+    inet_pton(AF_INET, target_ip, &target_addr.sin_addr);
+
+    // 发送数据
+    sendto(sockfd, buf, len, 0, (const struct sockaddr*)&target_addr, sizeof(target_addr));
+
+    // 关闭套接字
+    close(sockfd);
+
+    return;
+}
+
+void Take_Off(){
+    // Takeoff
+    mavlink_command_long_t cmd = {0};
+    cmd.target_system = 1;  // 目标系统ID（根据实际情况修改）
+    cmd.target_component = Info.compid;
+    cmd.command = MAV_CMD_NAV_TAKEOFF;
+    cmd.param7 = 20;
+
+	// Encode
+	mavlink_message_t message;
+	mavlink_msg_command_long_encode(MAVLINK_SYSTEM_ID_SELF, MAVLINK_COMPONENT_ID_SELF, &message, &cmd);
+    
+    // 将消息序列化为字节数组
+    uint8_t buf[MAVLINK_MAX_PACKET_LEN];
+    uint16_t len = mavlink_msg_to_send_buffer(buf, &message);
+
+    // 设置ArduPilot SITL的IP地址和端口
+    const char* target_ip = "127.0.0.1"; // ArduPilot SITL的IP地址
+    const int target_port = tx_port;       // ArduPilot SITL监听的端口
+
+    // 创建UDP套接字
+    int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sockfd < 0) {
+        perror("socket creation failed");
+        exit(EXIT_FAILURE);
+    }
+
+    // 设置目标地址
+    struct sockaddr_in target_addr;
+    memset(&target_addr, 0, sizeof(target_addr));
+    target_addr.sin_family = AF_INET;
+    target_addr.sin_port = htons(target_port);
+    inet_pton(AF_INET, target_ip, &target_addr.sin_addr);
+
+    // 发送数据
+    sendto(sockfd, buf, len, 0, (const struct sockaddr*)&target_addr, sizeof(target_addr));
+
+    // 关闭套接字
+    close(sockfd);
+
+    return;
+
+}
+
+void Arm(){
+    bool flag = true;
+
+	// Prepare command for off-board mode
+	mavlink_command_long_t com = { 0 };
+	com.target_system    = 1;
+	com.target_component = Info.compid;
+	com.command          = MAV_CMD_COMPONENT_ARM_DISARM;
+	com.confirmation     = true;
+	com.param1           = (float) (flag);
+
+	// Encode
+	mavlink_message_t message;
+	mavlink_msg_command_long_encode(MAVLINK_SYSTEM_ID_SELF, MAVLINK_COMPONENT_ID_SELF, &message, &com);
+
+    // 将消息序列化为字节数组
+    uint8_t buf[MAVLINK_MAX_PACKET_LEN];
+    uint16_t len = mavlink_msg_to_send_buffer(buf, &message);
+
+    // 设置ArduPilot SITL的IP地址和端口
+    const char* target_ip = "127.0.0.1"; // ArduPilot SITL的IP地址
+    const int target_port = tx_port;       // ArduPilot SITL监听的端口
+
+    // 创建UDP套接字
+    int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sockfd < 0) {
+        perror("socket creation failed");
+        exit(EXIT_FAILURE);
+    }
+
+    // 设置目标地址
+    struct sockaddr_in target_addr;
+    memset(&target_addr, 0, sizeof(target_addr));
+    target_addr.sin_family = AF_INET;
+    target_addr.sin_port = htons(target_port);
+    inet_pton(AF_INET, target_ip, &target_addr.sin_addr);
+
+    // 发送数据
+    sendto(sockfd, buf, len, 0, (const struct sockaddr*)&target_addr, sizeof(target_addr));
+
+    // 关闭套接字
+    close(sockfd);
+
+    return;
+}
+
+void DIS_Arm(){
+    bool flag = true;
+
+	mavlink_command_long_t com = { 0 };
+	com.target_system    = 1;
+	com.target_component = Info.compid;
+	com.command          = MAV_CMD_COMPONENT_ARM_DISARM;
+	com.confirmation     = true;
+	com.param1           = (float) (!flag);
+
+	// Encode
+	mavlink_message_t message;
+	mavlink_msg_command_long_encode(MAVLINK_SYSTEM_ID_SELF, MAVLINK_COMPONENT_ID_SELF, &message, &com);
+
+    // 将消息序列化为字节数组
+    uint8_t buf[MAVLINK_MAX_PACKET_LEN];
+    uint16_t len = mavlink_msg_to_send_buffer(buf, &message);
+
+    // 设置ArduPilot SITL的IP地址和端口
+    const char* target_ip = "127.0.0.1"; // ArduPilot SITL的IP地址
+    const int target_port = tx_port;       // ArduPilot SITL监听的端口
+
+    // 创建UDP套接字
+    int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sockfd < 0) {
+        perror("socket creation failed");
+        exit(EXIT_FAILURE);
+    }
+
+    // 设置目标地址
+    struct sockaddr_in target_addr;
+    memset(&target_addr, 0, sizeof(target_addr));
+    target_addr.sin_family = AF_INET;
+    target_addr.sin_port = htons(target_port);
+    inet_pton(AF_INET, target_ip, &target_addr.sin_addr);
+
+    // 发送数据
+    sendto(sockfd, buf, len, 0, (const struct sockaddr*)&target_addr, sizeof(target_addr));
+
+    // 关闭套接字
+    close(sockfd);
+
+    return;
+}
+
+void Auto_Fly(GtkWidget *widget, gpointer data)
 {
-    system("./Script/a");
+    //system("./Script/a");
+    Mode_Guided();
+    sleep(1);
+    Arm();
+    sleep(1);
+    Take_Off();
+}
+
+void checkAndRetrievePort(struct sockaddr_in *addr) {
+    if (strcmp(inet_ntoa(addr->sin_addr), "127.0.0.1") == 0) {
+        tx_port = ntohs(addr->sin_port);
+        printf("IP地址匹配，端口号为：%d\n", tx_port);
+    } else {
+        printf("IP地址不匹配\n");
+    }
+}
+
+void get_tx_port(){
+    int socket_fd;
+    struct sockaddr_in server_addr, client_addr;
+    socklen_t client_addr_len = sizeof(client_addr);
+
+    // 创建UDP套接字
+    socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
+
+    // 设置服务器地址结构体
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    server_addr.sin_port = htons(14550);
+
+    // 绑定套接字
+    bind(socket_fd, (struct sockaddr *)&server_addr, sizeof(server_addr));
+
+    printf("等待数据...\n");
+
+    // 读取数据
+    char buffer[1024];
+    mavlink_message_t msg;
+    mavlink_status_t status;
+    bool get_id = false;
+    ssize_t len;
+    len = recvfrom(socket_fd, buffer, sizeof(buffer), 0, (struct sockaddr *)&client_addr, &client_addr_len);
+    checkAndRetrievePort(&client_addr);
+
+get_id_loop:
+    for (ssize_t i = 0; i < len; ++i) {
+        if (mavlink_parse_char(MAVLINK_COMM_0, buffer[i], &msg, &status)) {
+            // Message decoded, check message ID
+            switch (msg.msgid) {
+                case MAVLINK_MSG_ID_HEARTBEAT: {
+                    mavlink_heartbeat_t heartbeat;
+                    mavlink_msg_heartbeat_decode(&msg, &heartbeat);
+
+                    Info.sysid = msg.sysid;
+                    Info.compid = msg.compid;
+                    Info.modes = heartbeat.custom_mode;
+
+                    get_id = true;
+                    printf("SysID: %d, CompID: %d, Custom Mode: %u\n",Info.sysid, Info.compid, Info.modes);
+                    break;
+                }
+                // Add cases for other message types if needed
+            }
+        }
+    }
+
+    if (get_id == false){
+        len = recvfrom(socket_fd, buffer, sizeof(buffer), 0, (struct sockaddr *)&client_addr, &client_addr_len);
+        goto get_id_loop;
+    }
+    // 关闭套接字
+    close(socket_fd);
+    return;
+}
+
+void on_confirm_button_clicked(GtkWidget *widget, gpointer data) {
+    // 获取IP输入框中的文本
+    const gchar *ip_text = gtk_entry_get_text(GTK_ENTRY((GtkWidget*)data));
+
+    // 获取端口输入框中的文本
+    GtkWidget *port_entry = GTK_WIDGET(g_object_get_data(G_OBJECT(widget), "port_entry"));
+    const gchar *port_text = gtk_entry_get_text(GTK_ENTRY(port_entry));
+
+    // 检查是否有输入
+    if (g_strcmp0(ip_text, "") != 0 && g_strcmp0(port_text, "") != 0) {
+        // 如果有输入，跳转到下一个界面（这里只是简单打印信息）
+        g_print("IP: %s\nPort: %s\n", ip_text, port_text);
+        ipinfo.ip = ip_text;
+        ipinfo.port = port_text;
+        gtk_widget_hide(windows_s.window1);
+        gtk_widget_show_all(windows_s.window2);
+    } else {
+        // 如果没有输入，弹窗提示请输入
+        GtkWidget *dialog = gtk_message_dialog_new(NULL, GTK_DIALOG_MODAL, GTK_MESSAGE_ERROR,
+                                                   GTK_BUTTONS_OK, "Please enter both IP and Port");
+        gtk_dialog_run(GTK_DIALOG(dialog));
+        gtk_widget_destroy(dialog);
+    }
 }
 
 int main(int argc, char *argv[])
 {
+    get_tx_port();
+    Info.sysid = 1;
+    Info.compid = 1;
     // 初始化 GTK+
     gtk_init(&argc, &argv);
 
+    windows_s.window1 = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+    gtk_window_set_title(GTK_WINDOW(windows_s.window1), "AutoControl APP IP Config"); // 设置窗口标题
+
+    // 创建横向布局
+    GtkWidget *grid = gtk_grid_new();
+    gtk_container_add(GTK_CONTAINER(windows_s.window1), grid);
+
+    // 创建IP输入框
+    GtkWidget *ip_entry = gtk_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(ip_entry), "Enter IP");
+    gtk_grid_attach(GTK_GRID(grid), ip_entry, 0, 0, 1, 1);
+
+    // 创建端口输入框
+    GtkWidget *port_entry = gtk_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(port_entry), "Enter Port");
+    gtk_grid_attach(GTK_GRID(grid), port_entry, 1, 0, 1, 1);
+
+    // 创建确认按钮
+    GtkWidget *confirm_button = gtk_button_new_with_label("Confirm");
+    gtk_grid_attach(GTK_GRID(grid), confirm_button, 0, 1, 2, 1);
+
+    // 将端口输入框作为数据附加到确认按钮
+    g_object_set_data(G_OBJECT(confirm_button), "port_entry", port_entry);
+
+    // 连接确认按钮的点击事件到回调函数
+    g_signal_connect(confirm_button, "clicked", G_CALLBACK(on_confirm_button_clicked), (gpointer)ip_entry);
+
     // 创建窗口
-    GtkWidget *window = gtk_window_new(GTK_WINDOW_TOPLEVEL); // 顶层窗口
-    gtk_window_set_title(GTK_WINDOW(window), "AutoControl APP"); // 设置窗口标题
-    gtk_container_set_border_width(GTK_CONTAINER(window), 10); 
+    windows_s.window2 = gtk_window_new(GTK_WINDOW_TOPLEVEL); // 顶层窗口
+    gtk_window_set_title(GTK_WINDOW(windows_s.window2), "AutoControl APP"); // 设置窗口标题
+    gtk_container_set_border_width(GTK_CONTAINER(windows_s.window2), 10); 
 
     // 创建一个垂直布局
     GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5); // 垂直布局
-    gtk_container_add(GTK_CONTAINER(window), vbox); // 将布局添加到窗口
+    gtk_container_add(GTK_CONTAINER(windows_s.window2), vbox); // 将布局添加到窗口
+
+    char ip_info_buffer[50];
+    sprintf(ip_info_buffer, "Listening to %s:%s",ipinfo.ip,ipinfo.port);
+    GtkWidget *ip_info_Label = gtk_label_new(ip_info_buffer); // 标签
+    gtk_widget_set_size_request(ip_info_Label,280,10);
+    gtk_box_pack_start(GTK_BOX(vbox), ip_info_Label, TRUE, TRUE, 0); // 将标签添加到布局
 
     // 创建一个标签来展示高度
     char buffer[50];
-    sprintf(buffer, "当前高度: %.2fm", currentAltitude);
+    sprintf(buffer, "The mode : %s \n 当前高度: %.2fm", flightModeStrings[Info.modes], Info.altitude);
     GtkWidget *altitudeLabel = gtk_label_new(buffer); // 标签
     gtk_widget_set_size_request(altitudeLabel,280,10);
     gtk_box_pack_start(GTK_BOX(vbox), altitudeLabel, TRUE, TRUE, 0); // 将标签添加到布局
 
-    // 创建一个按键
-    GtkWidget *button = gtk_button_new_with_label("Auto Land"); // 按键
-    gtk_widget_set_size_request(button, 50, 10);
-    gtk_box_pack_start(GTK_BOX(vbox), button, false, false, 0); // 将按键添加到布局
+    // 创建land按键
+    GtkWidget *Auto_Land_button = gtk_button_new_with_label("Auto Land"); // 按键
+    gtk_widget_set_size_request(Auto_Land_button, 50, 10);
+    gtk_box_pack_start(GTK_BOX(vbox), Auto_Land_button, false, false, 0); // 将按键添加到布局
 
     // 链接点击事件与回调函数
-    g_signal_connect(button, "clicked", G_CALLBACK(onButtonClicked), NULL); // 链接点击事件
+    g_signal_connect(Auto_Land_button, "clicked", G_CALLBACK(Auto_Land), NULL); // 链接点击事件
 
     // 创建一个按键
-    GtkWidget *button2 = gtk_button_new_with_label("Auto Fly"); // 按键
-    gtk_widget_set_size_request(button2,10,10);
-    gtk_box_pack_start(GTK_BOX(vbox), button2, false, false, 0); // 将按键添加到布局
+    GtkWidget *Auto_Fly_button = gtk_button_new_with_label("Auto Fly"); // 按键
+    gtk_widget_set_size_request(Auto_Fly_button,10,10);
+    gtk_box_pack_start(GTK_BOX(vbox), Auto_Fly_button, false, false, 0); // 将按键添加到布局
 
     // 链接点击事件与回调函数
-    g_signal_connect(button2, "clicked", G_CALLBACK(onButtonClicked2), NULL); // 链接点击事件
+    g_signal_connect(Auto_Fly_button, "clicked", G_CALLBACK(Auto_Fly), NULL); // 链接点击事件
+
+    // 创建横向布局
+    GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+    gtk_box_pack_start(GTK_BOX(vbox), hbox, false, false, 0);
+
+    // 创建一个按键
+    GtkWidget *arm_button = gtk_button_new_with_label("    arm    "); // 按键
+    gtk_widget_set_size_request(arm_button,5,10);
+    gtk_box_pack_start(GTK_BOX(hbox), arm_button, false, false, 0); // 将按键添加到布局
+
+    // 链接点击事件与回调函数
+    g_signal_connect(arm_button, "clicked", G_CALLBACK(Arm), NULL); // 链接点击事件
+
+    // 创建一个按键
+    GtkWidget *disarm_button = gtk_button_new_with_label("  disarm  "); // 按键
+    gtk_widget_set_size_request(disarm_button,5,10);
+    gtk_box_pack_start(GTK_BOX(hbox), disarm_button, false, false, 0); // 将按键添加到布局
+    // 链接点击事件与回调函数
+    g_signal_connect(disarm_button, "clicked", G_CALLBACK(DIS_Arm), NULL); // 链接点击事件
 
     // 设置更新高度的定时器
     g_timeout_add_seconds(1, updateAltitude, altitudeLabel); // 每隔1秒更新一次高度
+    g_timeout_add_seconds(1, updateipinfo, ip_info_Label);
 
     // 显示窗口
-    gtk_widget_show_all(window); 
+    gtk_widget_show_all(windows_s.window1); 
 
     // 运行主循环
     gtk_main();
