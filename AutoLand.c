@@ -25,33 +25,16 @@
 // 通信协议mavlink引入
 #include <common/mavlink.h>
 
-// 结构体定义
-typedef struct {
-    GtkWidget *window1;
-    GtkWidget *window2;
-} S_Windows;
-
-typedef struct
-{
-    char * ip;
-    char * port;
-}Ip_Info;
-
-Ip_Info ipinfo;
-
-
-S_Windows windows_s;
-
 
 // 定义常量
-#define MAVLINK_SYSTEM_ID_SELF 1
-#define MAVLINK_COMPONENT_ID_SELF 0
+#define MAVLINK_SYSTEM_ID_SELF 1 // 自身系统ID
+#define MAVLINK_COMPONENT_ID_SELF 0 // 自身组件ID
 #define TARGET_IP "127.0.0.1"   // 本地ip
 #define UDP_PORT 14550          // 本地UDP端口（接收）
 #define ARDUPILOT_IP TARGET_IP  // Ardupilot的IP地址
 #define ARDUPILOT_PORT UDP_PORT // 默认的MAVLink端口
 
-int tx_port = -1;
+int tx_port = -1; // 默认输出端口为空，等待读取到
 
 const char* flightModeStrings[] = {
     "STABILIZE", // 0 稳定模式
@@ -74,57 +57,35 @@ const char* flightModeStrings[] = {
     "ALT_FLIP", // 17 高度翻滚模式
 };
 
+
+// 信息储存的额外结构体创建
+
+// 定义结构体储存更新信息
 typedef struct{
     float altitude;
     int modes;
     int sysid;
     int compid;
 }Update_date;
+// 窗口结构体定义
+typedef struct {
+    GtkWidget *window1;
+    GtkWidget *window2;
+} S_Windows;
 
+// 定义结构体储存IP和端口
+typedef struct
+{
+    char * ip;
+    char * port;
+}Ip_Info;
+
+
+// 创建全局变量
+Ip_Info ipinfo;
+S_Windows windows_s;
 Update_date Info;
 
-void mav_Send()
-{
-    // 切换到Land模式的Mavlink命令
-    mavlink_command_long_t cmd = {0};
-    cmd.target_system = 1;  // 目标系统ID
-    cmd.target_component = Info.compid;
-    cmd.command = MAV_CMD_NAV_LAND;
-    cmd.param1 = 0;
-
-	// Encode
-	mavlink_message_t message;
-	mavlink_msg_command_long_encode(1, 0, &message, &cmd);
-    printf("%d %d",Info.sysid,Info.compid);
-    
-    // 将消息序列化为字节数组
-    uint8_t buf[MAVLINK_MAX_PACKET_LEN];
-    uint16_t len = mavlink_msg_to_send_buffer(buf, &message);
-
-    // 设置ArduPilot SITL的IP地址和端口
-    const char* target_ip = "127.0.0.1"; // ArduPilot SITL的IP地址
-    const int target_port = tx_port;       // ArduPilot SITL监听的端口
-
-    // 创建UDP套接字
-    int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (sockfd < 0) {
-        perror("socket creation failed");
-        exit(EXIT_FAILURE);
-    }
-
-    // 设置目标地址
-    struct sockaddr_in target_addr;
-    memset(&target_addr, 0, sizeof(target_addr));
-    target_addr.sin_family = AF_INET;
-    target_addr.sin_port = htons(target_port);
-    inet_pton(AF_INET, target_ip, &target_addr.sin_addr);
-
-    // 发送数据
-    sendto(sockfd, buf, len, 0, (const struct sockaddr*)&target_addr, sizeof(target_addr));
-
-    // 关闭套接字
-    close(sockfd);
-}
 
 /*
 * @brief 获取高度
@@ -217,6 +178,10 @@ gboolean updateAltitude(gpointer data)
     return G_SOURCE_CONTINUE;
 }
 
+/*
+* @brief 更新IP信息标签
+* @param data IP信息标签
+*/
 gboolean updateipinfo(gpointer data)
 {
     // 更新高度标签中的值
@@ -229,14 +194,57 @@ gboolean updateipinfo(gpointer data)
 }
 
 /*
-* @brief 按钮点击事件响应
+* @brief 自动降落，AutoLand按钮回调函数
+* @param widget 自动降落按钮
+* @param data NULL
 */
 void Auto_Land(GtkWidget *widget, gpointer data)
 {
-    mav_Send();
-    // system("./Script/b \"mode land\"");
+    // 切换到Land模式的Mavlink命令
+    mavlink_command_long_t cmd = {0};
+    cmd.target_system = 1;  // 目标系统ID
+    cmd.target_component = Info.compid;
+    cmd.command = MAV_CMD_NAV_LAND;
+    cmd.param1 = 0;
+
+	// Encode
+	mavlink_message_t message;
+	mavlink_msg_command_long_encode(1, 0, &message, &cmd);
+    printf("%d %d",Info.sysid,Info.compid);
+    
+    // 将消息序列化为字节数组
+    uint8_t buf[MAVLINK_MAX_PACKET_LEN];
+    uint16_t len = mavlink_msg_to_send_buffer(buf, &message);
+
+    // 设置ArduPilot SITL的IP地址和端口
+    const char* target_ip = "127.0.0.1"; // ArduPilot SITL的IP地址
+    const int target_port = tx_port;       // ArduPilot SITL监听的端口
+
+    // 创建UDP套接字
+    int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sockfd < 0) {
+        perror("socket creation failed");
+        exit(EXIT_FAILURE);
+    }
+
+    // 设置目标地址
+    struct sockaddr_in target_addr;
+    memset(&target_addr, 0, sizeof(target_addr));
+    target_addr.sin_family = AF_INET;
+    target_addr.sin_port = htons(target_port);
+    inet_pton(AF_INET, target_ip, &target_addr.sin_addr);
+
+    // 发送数据
+    sendto(sockfd, buf, len, 0, (const struct sockaddr*)&target_addr, sizeof(target_addr));
+
+    // 关闭套接字
+    close(sockfd);
 }
 
+/*
+* @brief 切换到Guided模式
+* @param NULL
+*/
 void Mode_Guided(){
     // 切换到Guided模式的Mavlink命令
     mavlink_command_long_t cmd = {0};
@@ -282,6 +290,10 @@ void Mode_Guided(){
     return;
 }
 
+/*
+* @brief 起飞
+* @param NULL
+*/
 void Take_Off(){
     // Takeoff
     mavlink_command_long_t cmd = {0};
@@ -326,6 +338,10 @@ void Take_Off(){
 
 }
 
+/*
+* @brief 解锁油门
+* @param NULL
+*/
 void Arm(){
     bool flag = true;
 
@@ -372,6 +388,10 @@ void Arm(){
     return;
 }
 
+/*
+* @brief 锁油门
+* @param NULL
+*/
 void DIS_Arm(){
     bool flag = true;
 
@@ -417,9 +437,13 @@ void DIS_Arm(){
     return;
 }
 
+/*
+* @brief 自动起飞
+* @param widget
+* @param data
+*/
 void Auto_Fly(GtkWidget *widget, gpointer data)
 {
-    //system("./Script/a");
     Mode_Guided();
     sleep(1);
     Arm();
@@ -427,6 +451,10 @@ void Auto_Fly(GtkWidget *widget, gpointer data)
     Take_Off();
 }
 
+/*
+* @brief 判断是否是本机IP
+* @param addr
+*/
 void checkAndRetrievePort(struct sockaddr_in *addr) {
     if (strcmp(inet_ntoa(addr->sin_addr), "127.0.0.1") == 0) {
         tx_port = ntohs(addr->sin_port);
@@ -436,6 +464,10 @@ void checkAndRetrievePort(struct sockaddr_in *addr) {
     }
 }
 
+/*
+* @brief 获取写入的tx_port
+* @param NULL
+*/
 void get_tx_port(){
     int socket_fd;
     struct sockaddr_in server_addr, client_addr;
@@ -481,7 +513,6 @@ get_id_loop:
                     printf("SysID: %d, CompID: %d, Custom Mode: %u\n",Info.sysid, Info.compid, Info.modes);
                     break;
                 }
-                // Add cases for other message types if needed
             }
         }
     }
@@ -495,7 +526,12 @@ get_id_loop:
     return;
 }
 
-void on_confirm_button_clicked(GtkWidget *widget, gpointer data) {
+/*
+* @brief 读取窗口输入
+* @param widget
+* @param data
+*/
+void read_input(GtkWidget *widget, gpointer data) {
     // 获取IP输入框中的文本
     const gchar *ip_text = gtk_entry_get_text(GTK_ENTRY((GtkWidget*)data));
 
@@ -505,7 +541,7 @@ void on_confirm_button_clicked(GtkWidget *widget, gpointer data) {
 
     // 检查是否有输入
     if (g_strcmp0(ip_text, "") != 0 && g_strcmp0(port_text, "") != 0) {
-        // 如果有输入，跳转到下一个界面（这里只是简单打印信息）
+        // 如果有输入，跳转到下一个界面
         g_print("IP: %s\nPort: %s\n", ip_text, port_text);
         ipinfo.ip = ip_text;
         ipinfo.port = port_text;
@@ -522,13 +558,16 @@ void on_confirm_button_clicked(GtkWidget *widget, gpointer data) {
 
 int main(int argc, char *argv[])
 {
-    get_tx_port();
+    get_tx_port(); // 获取tx_port
+
+    // 初始化Info
     Info.sysid = 1;
     Info.compid = 1;
+
     // 初始化 GTK+
     gtk_init(&argc, &argv);
 
-    windows_s.window1 = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+    windows_s.window1 = gtk_window_new(GTK_WINDOW_TOPLEVEL); // 创建窗口
     gtk_window_set_title(GTK_WINDOW(windows_s.window1), "AutoControl APP IP Config"); // 设置窗口标题
 
     // 创建横向布局
@@ -537,23 +576,23 @@ int main(int argc, char *argv[])
 
     // 创建IP输入框
     GtkWidget *ip_entry = gtk_entry_new();
-    gtk_entry_set_placeholder_text(GTK_ENTRY(ip_entry), "Enter IP");
-    gtk_grid_attach(GTK_GRID(grid), ip_entry, 0, 0, 1, 1);
+    gtk_entry_set_placeholder_text(GTK_ENTRY(ip_entry), "Enter IP"); // 设置占位文本
+    gtk_grid_attach(GTK_GRID(grid), ip_entry, 0, 0, 1, 1); // 将输入框附加到网格中
 
     // 创建端口输入框
     GtkWidget *port_entry = gtk_entry_new();
-    gtk_entry_set_placeholder_text(GTK_ENTRY(port_entry), "Enter Port");
-    gtk_grid_attach(GTK_GRID(grid), port_entry, 1, 0, 1, 1);
+    gtk_entry_set_placeholder_text(GTK_ENTRY(port_entry), "Enter Port"); // 设置占位文本
+    gtk_grid_attach(GTK_GRID(grid), port_entry, 1, 0, 1, 1); // 将输入框附加到网格中
 
     // 创建确认按钮
-    GtkWidget *confirm_button = gtk_button_new_with_label("Confirm");
-    gtk_grid_attach(GTK_GRID(grid), confirm_button, 0, 1, 2, 1);
+    GtkWidget *confirm_button = gtk_button_new_with_label("Confirm");  // 确认按钮
+    gtk_grid_attach(GTK_GRID(grid), confirm_button, 0, 1, 2, 1); // 将按钮附加到网格中
 
     // 将端口输入框作为数据附加到确认按钮
     g_object_set_data(G_OBJECT(confirm_button), "port_entry", port_entry);
 
     // 连接确认按钮的点击事件到回调函数
-    g_signal_connect(confirm_button, "clicked", G_CALLBACK(on_confirm_button_clicked), (gpointer)ip_entry);
+    g_signal_connect(confirm_button, "clicked", G_CALLBACK(read_input), (gpointer)ip_entry);
 
     // 创建窗口
     windows_s.window2 = gtk_window_new(GTK_WINDOW_TOPLEVEL); // 顶层窗口
@@ -614,7 +653,7 @@ int main(int argc, char *argv[])
 
     // 设置更新高度的定时器
     g_timeout_add_seconds(1, updateAltitude, altitudeLabel); // 每隔1秒更新一次高度
-    g_timeout_add_seconds(1, updateipinfo, ip_info_Label);
+    g_timeout_add_seconds(1, updateipinfo, ip_info_Label); // 每隔1秒更新一次IP信息
 
     // 显示窗口
     gtk_widget_show_all(windows_s.window1); 
