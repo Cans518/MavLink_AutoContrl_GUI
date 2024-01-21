@@ -18,7 +18,7 @@ PURPLE := \033[0;35m
 BUIL := \033[0;36m
 NC := \033[0m
 
-.PHONY: all clean copybuild clean_all
+.PHONY: all clean copybuild clean_all install_env
 
 all: $(TARGET) copybuild
 
@@ -52,6 +52,13 @@ clean_all:
 	@echo "$(YELLOW)Cleaning...$(NC)"
 	@rm -rf $(BUILDDIR) AutoLand  $(SCRIPT)
 	@echo "$(GREEN)Cleaning done$(NC)";
+
+install_env:
+	@echo "$(PURPLE)Installing dependencies...$(NC)"
+	@sudo apt-get update
+	@sudo apt-get upgrade -y
+	@sudo apt-get install -y libgtk-3-dev devhelp
+	@echo "$(PURPLE)Installed dependencies.$(NC)"
 
 # Ensure cache directory exists
 $(shell mkdir -p $(CACHE))
