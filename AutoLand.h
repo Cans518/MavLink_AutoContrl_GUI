@@ -61,6 +61,7 @@ typedef struct
     int modes;
     int sysid;
     int compid;
+    float high;
 } Update_date;
 // 窗口结构体定义
 typedef struct
