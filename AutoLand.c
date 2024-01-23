@@ -1,6 +1,10 @@
 #include "AutoLand.h"
 
 
+/*
+* @brief 发送消息到ArduPilot
+* @param cmd 写好的MavLink命令
+*/
 void send_to_ardupilot(mavlink_command_long_t cmd){
     // Encode
     mavlink_message_t message;
@@ -180,7 +184,7 @@ void Mode_Guided()
 
 /*
  * @brief 起飞
- * @param NULL
+ * @param high 起飞需要达到的高度
  */
 void Take_Off(float high)
 {
@@ -327,6 +331,11 @@ get_id_loop:
     return;
 }
 
+/*
+ * @brief 确定高度，确定起飞的高度
+ * @param widget
+ * @param data
+*/
 void ok_button_cb(GtkWidget *widget,gpointer data){
     const gchar *value =  gtk_entry_get_text(GTK_ENTRY((GtkWidget *)data));
     if (g_strcmp0(value, "") != 0 ){
@@ -481,21 +490,23 @@ int main(int argc, char *argv[])
     gtk_entry_set_placeholder_text(GTK_ENTRY(entry_h), "Enter the high"); // 设置占位文本
     gtk_box_pack_start(GTK_BOX(sbox), entry_h, false, false, 0);           // 将输入框附加到网格中
 
-    GtkWidget* ok_button = gtk_button_new_with_label("OK");
-    gtk_box_pack_start(GTK_BOX(sbox), ok_button, false, false, 0);
-    g_signal_connect(ok_button, "clicked", G_CALLBACK(ok_button_cb), entry_h);
+    GtkWidget* ok_button = gtk_button_new_with_label("OK"); // 创建一个按钮
+    gtk_box_pack_start(GTK_BOX(sbox), ok_button, false, false, 0); // 将按钮附加到网格中
+    g_signal_connect(ok_button, "clicked", G_CALLBACK(ok_button_cb), entry_h); // 链接点击事件与回调函数
 
     // 设置更新高度的定时器
     g_timeout_add_seconds(1, updateAltitude, altitudeLabel); // 每隔1秒更新一次高度
     g_timeout_add_seconds(1, updateipinfo, ip_info_Label);   // 每隔1秒更新一次IP信息
 
+    // 设置窗口位置为默认居中
     gtk_window_set_position(GTK_WINDOW(windows_s.window1), GTK_WIN_POS_CENTER_ALWAYS);
     gtk_window_set_position(GTK_WINDOW(windows_s.window2), GTK_WIN_POS_CENTER_ALWAYS);
     gtk_window_set_position(GTK_WINDOW(windows_s.window3), GTK_WIN_POS_CENTER_ALWAYS);
 
+    // 链接信号与回调函数, 用于退出窗口并且退出程序
     g_signal_connect(windows_s.window1, "destroy", G_CALLBACK(gtk_main_quit), NULL);
     g_signal_connect(windows_s.window2, "destroy", G_CALLBACK(gtk_main_quit), NULL);
-    // gtk_signal_connect(GTK_WINDOW(windows_s.window2), "destroy", G_CALLBACK(gtk_main_quit), NULL);
+    g_signal_connect(windows_s.window3, "destroy", G_CALLBACK(gtk_main_quit), NULL);
 
     // 显示窗口
     gtk_widget_show_all(windows_s.window1);
