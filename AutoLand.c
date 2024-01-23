@@ -182,14 +182,14 @@ void Mode_Guided()
  * @brief 起飞
  * @param NULL
  */
-void Take_Off()
+void Take_Off(float high)
 {
     // Takeoff
     mavlink_command_long_t cmd = {0};
     cmd.target_system = 1; // 目标系统ID（根据实际情况修改）
     cmd.target_component = Info.compid;
     cmd.command = MAV_CMD_NAV_TAKEOFF;
-    cmd.param7 = 20;
+    cmd.param7 = high;
 
     send_to_ardupilot(cmd);
 }
@@ -238,11 +238,8 @@ void DIS_Arm()
  */
 void Auto_Fly(GtkWidget *widget, gpointer data)
 {
-    Mode_Guided();
-    sleep(1);
-    Arm();
-    sleep(1);
-    Take_Off();
+    gtk_widget_show_all(windows_s.window3);
+    gtk_widget_hide(windows_s.window2);
 }
 
 /*
@@ -328,6 +325,22 @@ get_id_loop:
     // 关闭套接字
     close(socket_fd);
     return;
+}
+
+void ok_button_cb(GtkWidget *widget,gpointer data){
+    const gchar *value =  gtk_entry_get_text(GTK_ENTRY((GtkWidget *)data));
+    if (g_strcmp0(value, "") != 0 ){
+        Info.high = atoi(value);
+        gtk_widget_show_all(windows_s.window2);
+        gtk_widget_hide(windows_s.window3);
+        Mode_Guided();
+        sleep(1);
+        Arm();
+        sleep(1);
+        printf("%f",Info.high);
+        Take_Off(Info.high);
+    }
+
 }
 
 /*
@@ -458,12 +471,27 @@ int main(int argc, char *argv[])
     // 链接点击事件与回调函数
     g_signal_connect(disarm_button, "clicked", G_CALLBACK(DIS_Arm), NULL); // 链接点击事件
 
+    windows_s.window3 = gtk_window_new(GTK_WINDOW_TOPLEVEL); 
+    gtk_window_set_title(GTK_WINDOW(windows_s.window3), "Input");
+
+    GtkWidget *sbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5); 
+    gtk_container_add(GTK_CONTAINER(windows_s.window3), sbox);
+
+    GtkWidget *entry_h = gtk_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(entry_h), "Enter the high"); // 设置占位文本
+    gtk_box_pack_start(GTK_BOX(sbox), entry_h, false, false, 0);           // 将输入框附加到网格中
+
+    GtkWidget* ok_button = gtk_button_new_with_label("OK");
+    gtk_box_pack_start(GTK_BOX(sbox), ok_button, false, false, 0);
+    g_signal_connect(ok_button, "clicked", G_CALLBACK(ok_button_cb), entry_h);
+
     // 设置更新高度的定时器
     g_timeout_add_seconds(1, updateAltitude, altitudeLabel); // 每隔1秒更新一次高度
     g_timeout_add_seconds(1, updateipinfo, ip_info_Label);   // 每隔1秒更新一次IP信息
 
     gtk_window_set_position(GTK_WINDOW(windows_s.window1), GTK_WIN_POS_CENTER_ALWAYS);
     gtk_window_set_position(GTK_WINDOW(windows_s.window2), GTK_WIN_POS_CENTER_ALWAYS);
+    gtk_window_set_position(GTK_WINDOW(windows_s.window3), GTK_WIN_POS_CENTER_ALWAYS);
 
     g_signal_connect(windows_s.window1, "destroy", G_CALLBACK(gtk_main_quit), NULL);
     g_signal_connect(windows_s.window2, "destroy", G_CALLBACK(gtk_main_quit), NULL);
