@@ -13,7 +13,11 @@
 # 项目构建
  1. 安装`gtk+-3.0`库：
     ```shell
-    sudo envirment_install.sh
+    sudo ./envirment_install.sh
+    ```
+    或者可以使用`make`进行安装
+    ```shell
+    make install_env
     ```
  2. 安装`MavLink`库：
    在仓库`Lib`目录下已经提供 `MavLink-v2.0`的c语言构建本地库，可以直接使用。
