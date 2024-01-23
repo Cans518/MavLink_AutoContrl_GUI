@@ -20,12 +20,17 @@ NC := \033[0m
 
 .PHONY: all clean copybuild clean_all install_env
 
-all: $(TARGET) copybuild
+all: $(TARGET)
 
 $(TARGET): $(OBJ)
 	@echo "$(YELLOW)Compiling $@$(NC)"
 	@$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 	@echo "$(GREEN)Compiled $@$(NC)"
+	@echo "$(YELLOW)Copying $(TARGET) to project root...$(NC)"
+	@cp $(TARGET) ./; 
+	@echo "$(GREEN)Copying done.$(NC)";
+	@echo "$(GREEN)Now you can using $(NC) $(BUIL)./AutoLand $(NC) $(GREEN)to use it$(NC)"
+	
 
 $(CACHE)/AutoLand.o: $(SRC)
 	@mkdir -p $(dir $@)
@@ -35,11 +40,9 @@ $(CACHE)/AutoLand.o: $(SRC)
 
 
 copybuild: $(TARGET)
-	@if [ ! -e ./$(OUT) ]; then \
-		echo "$(YELLOW)Copying $(TARGET) to project root...$(NC)"; \
-		cp $(TARGET) ./; \
-		echo "$(GREEN)Copying done.$(NC)";\
-	fi;
+	@echo "$(YELLOW)Copying $(TARGET) to project root...$(NC)"
+	@cp $(TARGET) ./; 
+	@echo "$(GREEN)Copying done.$(NC)";
 	@echo "$(GREEN)Now you can using $(NC) $(BUIL)./AutoLand $(NC) $(GREEN)to use it$(NC)"
 
 
