@@ -67,6 +67,7 @@ typedef struct
 {
     GtkWidget *window1;
     GtkWidget *window2;
+    GtkWidget *window3;
 } S_Windows;
 
 // 定义结构体储存IP和端口
